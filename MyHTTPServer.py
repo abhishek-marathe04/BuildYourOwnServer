@@ -1,4 +1,5 @@
 import socket
+import threading
 
 
 class MyHTTPServer:
@@ -8,7 +9,7 @@ class MyHTTPServer:
         self.server_socket.bind((host, port))
 
         # # Listen for incoming connections (backlog of 1)
-        self.server_socket.listen(1)
+        self.server_socket.listen(5)
         print(f"Server is listening on http://{host}:{port}")  # Add this line
         return
 
@@ -17,8 +18,9 @@ class MyHTTPServer:
         while True:
             client_socket, client_address = self.server_socket.accept()
             print(f"Connection from {client_address}")
-            self.handle_client(client_socket)
-        return
+            client_thread = threading.Thread(target=self.handle_client, args=(client_socket,))
+            client_thread.daemon = True
+            client_thread.start()
 
     def handle_client(self, client_socket):
         # Receive, parse, respond
@@ -34,7 +36,14 @@ class MyHTTPServer:
         print(f"Headers : {headers}")
         print(f"Body : {body}")
 
-        self.send_response(client_socket, status="200 OK", headers={"Content-Type": "text/plain"}, body="OK")
+        if path == "/":
+            self.send_response(client_socket, status="200 OK", headers={"Content-Type": "text/plain"}, body="Welcome to Main Page")
+        elif path == "/about":
+            self.send_response(client_socket, status="200 OK", headers={"Content-Type": "text/plain"}, body="Welcome to About Page")
+        else:
+            response_body = "404 Not Found"
+            self.send_response(client_socket, status="404 Not Found", headers={"Content-Type": "text/plain"}, body=response_body)
+        
         return
 
     def parse_request(self, request_text):
