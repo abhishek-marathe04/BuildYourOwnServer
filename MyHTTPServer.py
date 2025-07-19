@@ -1,11 +1,12 @@
 import asyncio
-
+from models import Request, Response
 
 
 class MyHTTPServer:
     def __init__(self, host, port):
         self.host = host
         self.port = port
+        self.routes = {}
 
     async def serve_forever(self):
         server = await asyncio.start_server(self.handle_client, self.host, self.port)
@@ -16,20 +17,14 @@ class MyHTTPServer:
     async def handle_client(self, reader, writer):
         data = await reader.read(1024)
         request_text = data.decode('utf-8')
-        print(f"Raw request:\n{request_text}")
 
         method, path, version, headers, body = self.parse_request(request_text)
 
-        print(f"Method : {method}")
-        print(f"Path : {path}")
-        print(f"Version : {version}")
-        print(f"Headers : {headers}")
-        print(f"Body : {body}")
-
-        if path == "/":
-            await self.send_response(writer, status="200 OK", headers={"Content-Type": "text/plain"}, body="Welcome to Main Page")
-        elif path == "/about":
-            await self.send_response(writer, status="200 OK", headers={"Content-Type": "text/plain"}, body="Welcome to About Page")
+        request = Request(method=method, path=path, version=version, headers=headers, body=body)
+        handler = self.routes.get((method, path))
+        if handler:
+            response : Response = await handler(request)
+            await self.send_response(writer=writer, status=response.status, headers=response.headers, body=response.body)
         else:
             response_body = "404 Not Found"
             await self.send_response(writer, status="404 Not Found", headers={"Content-Type": "text/plain"}, body=response_body)
@@ -81,3 +76,15 @@ class MyHTTPServer:
         await writer.drain()
         writer.close()
         await writer.wait_closed()
+
+    def get(self, path):
+        def decocator(func):
+            self.routes[('GET', path)] = func
+            return func
+        return decocator
+    
+    def post(self, path):
+        def decocator(func):
+            self.routes[('POST', path)] = func
+            return func
+        return decocator
