@@ -1,31 +1,21 @@
-import socket
-import threading
+import asyncio
+
 
 
 class MyHTTPServer:
     def __init__(self, host, port):
-        # Setup socket, bind, listen
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind((host, port))
+        self.host = host
+        self.port = port
 
-        # # Listen for incoming connections (backlog of 1)
-        self.server_socket.listen(5)
-        print(f"Server is listening on http://{host}:{port}")  # Add this line
-        return
+    async def serve_forever(self):
+        server = await asyncio.start_server(self.handle_client, self.host, self.port)
+        print(f"Asyncio server listening on http://{self.host}:{self.port}")
+        async with server:
+            await server.serve_forever()
 
-    def serve_forever(self):
-        # Main server loop: accept and handle clients
-        while True:
-            client_socket, client_address = self.server_socket.accept()
-            print(f"Connection from {client_address}")
-            client_thread = threading.Thread(target=self.handle_client, args=(client_socket,))
-            client_thread.daemon = True
-            client_thread.start()
-
-    def handle_client(self, client_socket):
-        # Receive, parse, respond
-        raw_data = client_socket.recv(1024)
-        request_text = raw_data.decode('utf-8')
+    async def handle_client(self, reader, writer):
+        data = await reader.read(1024)
+        request_text = data.decode('utf-8')
         print(f"Raw request:\n{request_text}")
 
         method, path, version, headers, body = self.parse_request(request_text)
@@ -37,13 +27,12 @@ class MyHTTPServer:
         print(f"Body : {body}")
 
         if path == "/":
-            self.send_response(client_socket, status="200 OK", headers={"Content-Type": "text/plain"}, body="Welcome to Main Page")
+            await self.send_response(writer, status="200 OK", headers={"Content-Type": "text/plain"}, body="Welcome to Main Page")
         elif path == "/about":
-            self.send_response(client_socket, status="200 OK", headers={"Content-Type": "text/plain"}, body="Welcome to About Page")
+            await self.send_response(writer, status="200 OK", headers={"Content-Type": "text/plain"}, body="Welcome to About Page")
         else:
             response_body = "404 Not Found"
-            self.send_response(client_socket, status="404 Not Found", headers={"Content-Type": "text/plain"}, body=response_body)
-        
+            await self.send_response(writer, status="404 Not Found", headers={"Content-Type": "text/plain"}, body=response_body)
         return
 
     def parse_request(self, request_text):
@@ -74,7 +63,7 @@ class MyHTTPServer:
 
         return method, path, version, headers, body
 
-    def send_response(self, client_socket, status="200 OK", headers=None, body=""):
+    async def send_response(self, writer, status="200 OK", headers=None, body=""):
         # Build and send HTTP response
         if headers is None:
             headers = {}
@@ -88,5 +77,7 @@ class MyHTTPServer:
         response_lines.append("")  # blank line
         response_lines.append(body)
         response = '\r\n'.join(response_lines)
-        client_socket.sendall(response.encode('utf-8'))
-        client_socket.close()
+        writer.write(response.encode('utf-8'))
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
